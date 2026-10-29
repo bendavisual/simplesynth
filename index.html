@@ -1,0 +1,298 @@
+﻿<div id="app">
+ <h1>Browser Synthesizer</h1>
+
+
+ <section class="panel">
+   <h2>Sound engine</h2>
+
+
+   <div class="control-row">
+     <label for="source-mode">Harmonic source</label>
+     <select id="source-mode">
+       <option value="sine">Sine</option>
+       <option value="sawtooth">Sawtooth</option>
+       <option value="square">Square</option>
+       <option value="triangle">Triangle</option>
+       <option value="noise">Noise</option>
+       <option value="am">AM</option>
+       <option value="fm">FM</option>
+     </select>
+   </div>
+
+
+   <p class="help-text">
+     The 16 sliders set the level of each harmonic for pitched waveforms. Noise
+     uses a broadband noise source instead of harmonic oscillators.
+   </p>
+
+
+   <div id="mod-controls" hidden>
+     <div class="control-row">
+       <label for="mod-source">Modulation source</label>
+       <select id="mod-source">
+         <option value="wave">Second waveform</option>
+         <option value="adsr">ADSR envelope</option>
+       </select>
+     </div>
+
+
+     <!-- The carrier is shared by both modulation methods. -->
+     <div class="control-row">
+       <label for="carrier-wave">Carrier waveform</label>
+       <select id="carrier-wave">
+         <option value="sine">Sine</option>
+         <option value="square">Square</option>
+         <option value="sawtooth">Sawtooth</option>
+         <option value="triangle">Triangle</option>
+       </select>
+     </div>
+
+
+     <!-- Only controls specific to a second oscillator go in this group. -->
+     <div id="wave-mod-controls">
+       <div class="control-row">
+         <label for="mod-wave">Modulator waveform</label>
+         <select id="mod-wave">
+           <option value="sine">Sine</option>
+           <option value="square">Square</option>
+           <option value="sawtooth">Sawtooth</option>
+           <option value="triangle">Triangle</option>
+         </select>
+       </div>
+
+
+       <div class="control-row">
+         <label for="detune-semitones">Modulator pitch (semitones)</label>
+         <input
+           id="detune-semitones"
+           type="range"
+           min="-36"
+           max="36"
+           step="1"
+           value="0"
+         />
+         <output id="detune-semitones-out">0 st</output>
+       </div>
+
+
+       <div class="control-row">
+         <label for="detune-cents">Modulator pitch (cents)</label>
+         <input
+           id="detune-cents"
+           type="range"
+           min="-100"
+           max="100"
+           step="1"
+           value="0"
+         />
+         <output id="detune-cents-out">0 cents</output>
+       </div>
+
+
+       <p class="help-text">
+         The second waveform modulates the carrier only; it is never mixed
+         directly into the output. Its frequency is based on the played note
+         plus the semitone and cents offsets.
+       </p>
+     </div>
+
+
+     <div class="control-row">
+       <label for="mod-depth">Modulation amount / ADSR amplitude</label>
+       <input
+         id="mod-depth"
+         type="range"
+         min="0"
+         max="100"
+         step="1"
+         value="25"
+       />
+       <output id="mod-depth-out">25%</output>
+     </div>
+
+
+     <div id="adsr-mod-note" hidden>
+       <p class="help-text">
+         The ADSR envelope is the modulation source. No second oscillator is
+         created. In AM, the envelope shapes amplitude; in FM, it shapes the
+         amount of pitch deviation.
+       </p>
+     </div>
+   </div>
+
+
+   <button id="reset-harmonics" type="button">Zero all harmonics</button>
+   <div id="harmonics"></div>
+
+
+   <div class="control-row">
+     <label for="master-volume-slider">Master volume</label>
+     <input
+       id="master-volume-slider"
+       type="range"
+       min="0"
+       max="1"
+       step="0.01"
+       value="0.2"
+     />
+     <output id="master-volume-value">20%</output>
+   </div>
+ </section>
+
+
+ <section class="panel">
+   <h2>Musical typing and MIDI</h2>
+   <div id="octave-display">Keyboard: C4–F5</div>
+
+
+   <p class="help-text">
+     Computer keys: A W S E D F T G Y H U J K O L P ; '. Z/X changes octave.
+     Click and hold piano keys, or connect a MIDI controller.
+   </p>
+
+
+   <div class="control-row">
+     <button id="midi-connect" type="button">Enable MIDI</button>
+     <span id="midi-status" role="status">MIDI not connected</span>
+   </div>
+
+
+   <div id="piano-container">
+     <div id="piano"></div>
+   </div>
+ </section>
+
+
+ <section class="panel">
+   <h2>ADSR envelope</h2>
+   <p class="help-text">
+     Attack, decay and release are seconds. Sustain is a level from 0 to 100%.
+     When selected as the modulation source, this envelope controls AM
+     amplitude or FM pitch deviation. The modulation amount slider sets its
+     peak strength.
+   </p>
+   <div id="envelope-controls"></div>
+ </section>
+
+
+ <section class="panel">
+   <h2>Output filter</h2>
+   <p class="help-text">
+     This filter affects the sound and the live spectrum. The orange curve is
+     the calculated filter response, aligned to the same frequency and dB axes
+     as the output spectrum. Drag the cutoff line in the spectrum to adjust it.
+   </p>
+
+
+   <div class="control-row">
+     <label for="filter-type">Filter type</label>
+     <select id="filter-type">
+       <option value="off">Off</option>
+       <option value="lowpass">Low-pass (LPF)</option>
+       <option value="highpass">High-pass (HPF)</option>
+       <option value="bandpass">Band-pass (BPF)</option>
+     </select>
+   </div>
+
+
+   <div class="control-row">
+     <label for="filter-cutoff">Cutoff / center frequency</label>
+     <input
+       id="filter-cutoff"
+       type="range"
+       min="20"
+       max="20000"
+       step="1"
+       value="5000"
+     />
+     <output id="filter-cutoff-out">5000 Hz</output>
+   </div>
+
+
+   <div class="control-row">
+     <label for="filter-q">Resonance (Q)</label>
+     <input
+       id="filter-q"
+       type="range"
+       min="0.1"
+       max="20"
+       step="0.1"
+       value="0.7"
+     />
+     <output id="filter-q-out">0.7</output>
+   </div>
+ </section>
+
+
+ <section class="panel">
+   <h2>Live visualizers</h2>
+
+
+   <div class="control-row">
+     <label>
+       <input type="checkbox" id="spectrogram-toggle" />
+       Show spectrogram
+     </label>
+     <label>
+       <input type="checkbox" id="log-frequency-toggle" checked />
+       Spectrogram: log frequency
+     </label>
+     <label>
+       <input type="checkbox" id="log-amplitude-toggle" checked />
+       Spectrogram: log amplitude
+     </label>
+   </div>
+
+
+   <div id="spectrogram-window" class="visualizer-window" hidden>
+     <h3>Post-filter frequency over time</h3>
+     <canvas id="spectrogram-canvas" width="800" height="260"></canvas>
+     <div class="legend">
+       <span>Quiet</span>
+       <span class="legend-gradient"></span>
+       <span>Loud</span>
+     </div>
+   </div>
+
+
+   <div class="control-row">
+     <label>
+       <input type="checkbox" id="oscilloscope-toggle" />
+       Show oscilloscope
+     </label>
+   </div>
+
+
+   <div id="oscilloscope-window" class="visualizer-window" hidden>
+     <h3>Post-filter waveform</h3>
+     <canvas id="oscilloscope-canvas" width="800" height="180"></canvas>
+   </div>
+
+
+   <div class="control-row">
+     <label>
+       <input type="checkbox" id="spectrum-toggle" checked />
+       Show instantaneous spectrum
+     </label>
+     <label>
+       <input type="checkbox" id="spectrum-log-frequency-toggle" checked />
+       Log frequency
+     </label>
+     <label>
+       <input type="checkbox" id="spectrum-log-amplitude-toggle" checked />
+       Log amplitude (dB)
+     </label>
+   </div>
+
+
+   <div id="spectrum-window" class="visualizer-window">
+     <h3>Instantaneous spectrum + filter response</h3>
+     <canvas id="spectrum-canvas" width="800" height="300"></canvas>
+     <div class="legend">
+       <span>Low frequency</span>
+       <span>Cyan: output · Orange: filter response</span>
+       <span>High frequency</span>
+     </div>
+   </div>
+ </section>
+</div>
