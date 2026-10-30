@@ -1,9 +1,8 @@
-﻿(() => {
+
+(() => {
 'use strict';
 
-
 const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-
 
 if (!AudioContextClass) {
   document.getElementById('app').innerHTML =
@@ -11,17 +10,14 @@ if (!AudioContextClass) {
   return;
 }
 
-
 const $ = id => document.getElementById(id);
 const audioContext = new AudioContextClass();
-
 
 const noiseBuffer = audioContext.createBuffer(
   1,
   audioContext.sampleRate * 2,
   audioContext.sampleRate
 );
-
 
 {
   const data = noiseBuffer.getChannelData(0);
@@ -30,16 +26,13 @@ const noiseBuffer = audioContext.createBuffer(
   }
 }
 
-
 const masterGain = audioContext.createGain();
 masterGain.gain.value = 0.2;
-
 
 const filter = audioContext.createBiquadFilter();
 filter.type = 'allpass';
 filter.frequency.value = 5000;
 filter.Q.value = 0.7;
-
 
 // Separate, synchronously-updated reference filter used only to draw the orange response curve.
 // This avoids plotting stale AudioParam automation values from the audible filter.
@@ -48,21 +41,17 @@ responseFilter.type = 'allpass';
 responseFilter.frequency.value = 5000;
 responseFilter.Q.value = 0.7;
 
-
 const analyser = audioContext.createAnalyser();
 analyser.fftSize = 1024;
 analyser.smoothingTimeConstant = 0;
-
 
 masterGain.connect(filter);
 filter.connect(analyser);
 analyser.connect(audioContext.destination);
 
-
 const HARMONIC_COUNT = 16;
 const harmonicAmplitudes = Array(HARMONIC_COUNT).fill(0);
 harmonicAmplitudes[0] = 1;
-
 
 const envelope = {
   attack: 0.01,
@@ -70,7 +59,6 @@ const envelope = {
   sustain: 0.70,
   release: 0.20
 };
-
 
 // Independent envelope used only for FM pitch sweeps.
 const modEnvelope = {
@@ -80,16 +68,13 @@ const modEnvelope = {
   release: 0.25
 };
 
-
 let sourceMode = 'sine';
 let keyboardOctave = 4;
 let animationFrameId = null;
 let midiAccess = null;
 let responseDirty = true;
 
-
 const activeVoices = new Map();
-
 
 const KEYBOARD_NOTES = {
   a: {note:0,type:'white'},
@@ -112,31 +97,25 @@ const KEYBOARD_NOTES = {
   "'": {note:17,type:'white'}
 };
 
-
 /* =========================================================
    PIANO AND KEYBOARD
    ========================================================= */
-
 
 const piano = $('piano');
 const pianoKeyElements = {};
 const blackOffsets = {1:0,3:1,6:3,8:4,10:5};
 
-
 for (const key in KEYBOARD_NOTES) {
   const info = KEYBOARD_NOTES[key];
   const el = document.createElement('div');
 
-
   el.className = 'piano-key ' + info.type;
   el.dataset.key = key;
-
 
   const label = document.createElement('div');
   label.className = 'piano-key-label';
   label.textContent = key.toUpperCase();
   el.appendChild(label);
-
 
   if (info.type === 'white') {
     piano.appendChild(el);
@@ -144,40 +123,32 @@ for (const key in KEYBOARD_NOTES) {
     const octave = Math.floor(info.note / 12);
     const whiteIndex = octave * 7 + blackOffsets[info.note % 12];
 
-
     el.style.left = ((whiteIndex + 1) * 48 - 15) + 'px';
     piano.appendChild(el);
   }
 
-
   pianoKeyElements[key] = el;
 }
-
 
 function midiToFrequency(midi) {
   return 440 * Math.pow(2, (midi - 69) / 12);
 }
-
 
 function keyToMidi(key) {
   const info = KEYBOARD_NOTES[key];
   return info ? 12 * (keyboardOctave + 1) + info.note : null;
 }
 
-
 function setOctaveDisplay() {
   $('octave-display').textContent =
     'Keyboard: C' + keyboardOctave + '–F' + (keyboardOctave + 1);
 }
 
-
 setOctaveDisplay();
-
 
 /* =========================================================
    ADSR CONTROLS
    ========================================================= */
-
 
 function createRangeControl(container, name, property, min, max, step, target = envelope) {
   const wrap = document.createElement('div');
@@ -185,10 +156,8 @@ function createRangeControl(container, name, property, min, max, step, target = 
   wrap.dataset.property = property;
   wrap.dataset.target = target === envelope ? 'main' : 'mod';
 
-
   const label = document.createElement('label');
   label.textContent = name;
-
 
   const slider = document.createElement('input');
   slider.type = 'range';
@@ -196,7 +165,6 @@ function createRangeControl(container, name, property, min, max, step, target = 
   slider.max = max;
   slider.step = step;
   slider.value = target[property];
-
 
   const number = document.createElement('input');
   number.type = 'number';
@@ -206,63 +174,50 @@ function createRangeControl(container, name, property, min, max, step, target = 
   number.value = target[property];
   number.className = 'envelope-value';
 
-
   const update = value => {
     let v = Number(value);
-
 
     if (!Number.isFinite(v)) {
       v = target[property];
     }
 
-
     v = Math.max(Number(min), Math.min(Number(max), v));
-
 
     target[property] = v;
     slider.value = v;
     number.value = String(v);
   };
 
-
   slider.addEventListener('input', () => update(slider.value));
   number.addEventListener('change', () => update(number.value));
-
 
   wrap.append(label, slider, number);
   container.appendChild(wrap);
 }
-
 
 createRangeControl($('envelope-controls'), 'Attack (s)', 'attack', 0, 2, 0.01);
 createRangeControl($('envelope-controls'), 'Decay (s)', 'decay', 0, 2, 0.01);
 createRangeControl($('envelope-controls'), 'Sustain', 'sustain', 0, 1, 0.01);
 createRangeControl($('envelope-controls'), 'Release (s)', 'release', 0, 3, 0.01);
 
-
 createRangeControl($('adsr2-envelope-controls'), 'Attack (s)', 'attack', 0, 4, 0.01, modEnvelope);
 createRangeControl($('adsr2-envelope-controls'), 'Decay (s)', 'decay', 0, 4, 0.01, modEnvelope);
 createRangeControl($('adsr2-envelope-controls'), 'Sustain', 'sustain', 0, 1, 0.01, modEnvelope);
 createRangeControl($('adsr2-envelope-controls'), 'Release (s)', 'release', 0, 4, 0.01, modEnvelope);
 
-
 /* =========================================================
    HARMONIC SLIDERS
    ========================================================= */
 
-
 const harmonicControls = [];
-
 
 for (let i = 0; i < HARMONIC_COUNT; i++) {
   const wrap = document.createElement('div');
   wrap.className = 'harmonic';
 
-
   const label = document.createElement('div');
   label.className = 'harmonic-number';
   label.textContent = i + 1;
-
 
   const slider = document.createElement('input');
   slider.type = 'range';
@@ -272,7 +227,6 @@ for (let i = 0; i < HARMONIC_COUNT; i++) {
   slider.value = harmonicAmplitudes[i];
   slider.setAttribute('aria-label', 'Harmonic ' + (i + 1) + ' amplitude');
 
-
   const number = document.createElement('input');
   number.type = 'number';
   number.min = 0;
@@ -281,39 +235,30 @@ for (let i = 0; i < HARMONIC_COUNT; i++) {
   number.value = harmonicAmplitudes[i].toFixed(4);
   number.className = 'harmonic-value';
 
-
   const update = value => {
     let v = Number(value);
-
 
     if (!Number.isFinite(v)) {
       v = harmonicAmplitudes[i];
     }
 
-
     v = Math.max(0, Math.min(1, v));
-
 
     harmonicAmplitudes[i] = v;
     slider.value = v;
     number.value = v.toFixed(4);
 
-
     updateVoiceHarmonic(i, v);
   };
-
 
   slider.addEventListener('input', () => update(slider.value));
   number.addEventListener('change', () => update(number.value));
 
-
   wrap.append(label, slider, number);
   $('harmonics').appendChild(wrap);
 
-
   harmonicControls.push({slider, number});
 }
-
 
 $('reset-harmonics').addEventListener('click', () => {
   harmonicControls.forEach((control, i) => {
@@ -324,21 +269,17 @@ $('reset-harmonics').addEventListener('click', () => {
   });
 });
 
-
 /* =========================================================
    MODULATION MODE LOGIC
    ========================================================= */
-
 
 function modulationSource() {
   return $('mod-source').value;
 }
 
-
 function isModulated() {
   return sourceMode === 'am' || sourceMode === 'fm';
 }
-
 
 function modulatorFrequency(carrierFrequency = 440) {
   const semitones = Number($('mod-frequency-semitones').value);
@@ -350,51 +291,44 @@ function modulatorFrequency(carrierFrequency = 440) {
   return Math.max(0.05, Math.min(audioContext.sampleRate / 2 - 1, hz));
 }
 
-
 function currentAMDepth() {
   return Math.max(0, Math.min(100, Number($('mod-depth').value))) / 100;
 }
-
 
 function currentFMDepthSemitones() {
   return Math.max(0, Math.min(48, Number($('mod-depth').value)));
 }
 
-
 function currentAdsr2Depth() {
   return Number($('adsr2-depth').value);
 }
-
 
 function updateModReadouts() {
   const semitones = Number($('mod-frequency-semitones').value);
   const cents = Number($('mod-frequency-cents').value);
   const hz = modulatorFrequency();
-  {semitones} st`;
-  {cents > 0 ? '+' : ''}${cents} cents`;
-  {hz.toFixed(2)} Hz`;
+  $('mod-frequency-semitones-out').textContent = `${semitones} st`;
+  $('mod-frequency-cents-out').textContent = `${cents > 0 ? '+' : ''}${cents} cents`;
+  $('mod-frequency-out').textContent = `${hz.toFixed(2)} Hz`;
   $('mod-fixed-rate-row').hidden = $('mod-rate-mode').value !== 'fixed';
-  {(Number($('mod-base-hz').value) || 5).toFixed(1)} Hz`;
-  $('mod-frequency-out').textContent = {hz.toFixed(2)} Hz (note-tracked)` : `${hz.toFixed(2)} Hz`; 
-
+  $('mod-base-hz-out').textContent = `${(Number($('mod-base-hz').value) || 5).toFixed(1)} Hz`;
+  $('mod-frequency-out').textContent = $('mod-rate-mode').value === 'track' ? `${hz.toFixed(2)} Hz (note-tracked)` : `${hz.toFixed(2)} Hz`; 
 
   const amount = Number($('mod-depth').value);
   if (sourceMode === 'am') {
-    {amount.toFixed(1).replace(/\.0$/, '')}%`;
+    $('mod-depth-out').textContent = `${amount.toFixed(1).replace(/\.0$/, '')}%`;
     $('mod-depth-help').textContent = `AM amount: ${amount.toFixed(1).replace(/\.0$/, '')}% means the carrier loudness varies by that percentage above and below its average level. 0% = no tremolo; 100% = full-depth tremolo.`;
   } else {
-    {amount.toFixed(1).replace(/\.0$/, '')} semitones`;
+    $('mod-depth-out').textContent = `±${amount.toFixed(1).replace(/\.0$/, '')} semitones`;
     $('mod-depth-help').textContent = `FM amount: the carrier pitch moves up and down by this many semitones around its base pitch during each modulator cycle. 0 = no pitch movement.`;
   }
   const adsrDepth = currentAdsr2Depth();
-  {adsrDepth > 0 ? '+' : ''}${adsrDepth} semitones`;
+  $('adsr2-depth-out').textContent = `${adsrDepth > 0 ? '+' : ''}${adsrDepth} semitones`;
 }
-
 
 function stopActiveVoices() {
   for (const id of [...activeVoices.keys()]) noteOff(id);
 }
-
 
 function updateModControls() {
   sourceMode = $('source-mode').value;
@@ -409,7 +343,6 @@ function updateModControls() {
   $('wave-mod-controls').hidden = !enabled || !useWave;
   $('adsr2-mod-controls').hidden = !enabled || useWave || sourceMode !== 'fm';
   $('mod-source').querySelector('option[value="adsr"]').disabled = sourceMode === 'am';
-
 
   const depth = $('mod-depth');
   if (sourceMode === 'fm') {
@@ -428,7 +361,6 @@ function updateModControls() {
   $('adsr2-mod-note').hidden = true;
   updateModReadouts();
 }
-
 
 $('source-mode').addEventListener('change', () => {
   updateModControls();
@@ -460,11 +392,9 @@ $('carrier-wave').addEventListener('change', stopActiveVoices);
 $('mod-wave').addEventListener('change', stopActiveVoices);
 updateModControls();
 
-
 /* =========================================================
    OUTPUT FILTER
    ========================================================= */
-
 
 function updateFilter() {
   const type = $('filter-type').value;
@@ -472,12 +402,10 @@ function updateFilter() {
   const cutoff = Math.max(20, Math.min(max, Number($('filter-cutoff').value)));
   const q = Math.max(0.0001, Number($('filter-q').value));
 
-
   // Apply a short smoothing ramp to the audible filter.
   filter.type = type === 'off' ? 'allpass' : type;
   filter.frequency.setTargetAtTime(cutoff, audioContext.currentTime, 0.008);
   filter.Q.setTargetAtTime(q, audioContext.currentTime, 0.008);
-
 
   // Keep the response-plot filter in exact sync immediately, with no automation lag.
   responseFilter.type = type === 'off' ? 'allpass' : type;
@@ -485,39 +413,32 @@ function updateFilter() {
   responseFilter.Q.value = q;
   responseDirty = true;
 
-
-  {Math.round(cutoff)} Hz`;
+  $('filter-cutoff-out').textContent = `${Math.round(cutoff)} Hz`;
   $('filter-q-out').textContent = q.toFixed(1);
-
 
   calculateFilterResponse();
   if ($('spectrum-toggle').checked) drawSpectrum();
 }
 
-
 $('filter-type').addEventListener('change', updateFilter);
 $('filter-cutoff').addEventListener('input', updateFilter);
 $('filter-q').addEventListener('input', updateFilter);
 
-
 $('master-volume-slider').addEventListener('input', () => {
   const value = Number($('master-volume-slider').value);
   masterGain.gain.setTargetAtTime(value, audioContext.currentTime, 0.005);
-  {Math.round(value * 100)}%`;
+  $('master-volume-value').textContent = `${Math.round(value * 100)}%`;
 });
-
 
 /* =========================================================
    AUDIO HELPERS AND ENVELOPES
    ========================================================= */
-
 
 function resumeAudio() {
   if (audioContext.state === 'suspended') {
     audioContext.resume().catch(() => {});
   }
 }
-
 
 function createOsc(type, frequency) {
   const oscillator = audioContext.createOscillator();
@@ -529,18 +450,15 @@ function createOsc(type, frequency) {
   return oscillator;
 }
 
-
 function createGain(value = 1) {
   const gain = audioContext.createGain();
   gain.gain.value = value;
   return gain;
 }
 
-
 function scheduleEnvelope(param, settings, peak, now) {
   const attackEnd = now + Math.max(0.001, settings.attack);
   const decayEnd = attackEnd + Math.max(0.001, settings.decay);
-
 
   param.cancelScheduledValues(now);
   param.setValueAtTime(0, now);
@@ -549,30 +467,24 @@ function scheduleEnvelope(param, settings, peak, now) {
   return {attackEnd, decayEnd};
 }
 
-
 function scheduleADSR(param, velocity, now) {
   return scheduleEnvelope(param, envelope, velocity, now);
 }
-
 
 function semitoneDeviation(frequency, semitones) {
   return frequency * (Math.pow(2, semitones / 12) - 1);
 }
 
-
 /* =========================================================
    BUILD EACH HARMONIC / PARTIAL
    ========================================================= */
 
-
 function buildPartial(voice, index, amplitude, now) {
   if (amplitude <= 0 || voice.mode === 'noise') return null;
-
 
   const partialFrequency = voice.baseFreq * (index + 1);
   const outputGain = createGain(amplitude);
   outputGain.connect(voice.voiceGain);
-
 
   const partial = {
     index, amp: amplitude, gain: outputGain, carrier: null,
@@ -580,20 +492,17 @@ function buildPartial(voice, index, amplitude, now) {
     modBase: 0, mode: voice.mode
   };
 
-
   const modded = voice.mode === 'am' || voice.mode === 'fm';
   const carrier = createOsc(modded ? $('carrier-wave').value : voice.mode, partialFrequency);
   partial.carrier = carrier;
   partial.oscillators.push(carrier);
   voice.oscillators.push(carrier);
 
-
   if (modded && modulationSource() === 'wave') {
     const modulator = createOsc($('mod-wave').value, modulatorFrequency(voice.baseFreq));
     partial.modulator = modulator;
     partial.oscillators.push(modulator);
     voice.oscillators.push(modulator);
-
 
     if (voice.mode === 'am') {
       const depth = currentAMDepth();
@@ -637,30 +546,24 @@ function buildPartial(voice, index, amplitude, now) {
     carrier.connect(outputGain);
   }
 
-
   carrier.start();
   return partial;
 }
 
-
 /* =========================================================
    NOTE ON / NOTE OFF
    ========================================================= */
-
 
 function noteOn(id, midi, velocity = 1) {
   if (activeVoices.has(id) || midi == null) {
     return;
   }
 
-
   resumeAudio();
-
 
   const now = audioContext.currentTime;
   const baseFreq = midiToFrequency(midi);
   const voiceGain = createGain(1);
-
 
   const voice = {
     id,
@@ -674,36 +577,28 @@ function noteOn(id, midi, velocity = 1) {
     envelopeTimes: null
   };
 
-
   voice.envelopeTimes = scheduleADSR(voiceGain.gain, velocity, now);
 
-
   voiceGain.connect(masterGain);
-
 
   if (sourceMode === 'noise') {
     const noise = audioContext.createBufferSource();
     noise.buffer = noiseBuffer;
     noise.loop = true;
 
-
     const noiseGain = createGain(0.25);
-
 
     noise.connect(noiseGain);
     noiseGain.connect(voiceGain);
     noise.start();
 
-
     voice.oscillators.push(noise);
   }
-
 
   for (let i = 0; i < HARMONIC_COUNT && sourceMode !== 'noise'; i++) {
     if (harmonicAmplitudes[i] <= 0) {
       continue;
     }
-
 
     const partial = buildPartial(
       voice,
@@ -712,29 +607,23 @@ function noteOn(id, midi, velocity = 1) {
       now
     );
 
-
     if (partial) {
       voice.partials.push(partial);
     }
   }
 
-
   activeVoices.set(id, voice);
-
 
   if (pianoKeyElements[id]) {
     pianoKeyElements[id].classList.add('active');
   }
 
-
   refreshVisualizerLoop();
 }
-
 
 function noteOff(id) {
   const voice = activeVoices.get(id);
   if (!voice) return;
-
 
   const now = audioContext.currentTime;
   const mainRelease = Math.max(0.01, envelope.release);
@@ -742,12 +631,10 @@ function noteOff(id) {
     ? Math.max(0.01, modEnvelope.release) : 0;
   const stopAt = now + Math.max(mainRelease, adsr2Release) + 0.03;
 
-
   const mainGain = voice.voiceGain.gain;
   mainGain.cancelScheduledValues(now);
   mainGain.setValueAtTime(mainGain.value, now);
   mainGain.linearRampToValueAtTime(0, now + mainRelease);
-
 
   for (const partial of voice.partials) {
     for (const node of partial.nodes) {
@@ -763,15 +650,12 @@ function noteOff(id) {
     }
   }
 
-
   for (const oscillator of voice.oscillators) {
     try { oscillator.stop(stopAt); } catch (error) {}
   }
 
-
   activeVoices.delete(id);
   if (pianoKeyElements[id]) pianoKeyElements[id].classList.remove('active');
-
 
   setTimeout(() => {
     for (const partial of voice.partials) {
@@ -785,16 +669,13 @@ function noteOff(id) {
   }, (stopAt - now + 0.05) * 1000);
 }
 
-
 /* =========================================================
    UPDATE HARMONICS ON ACTIVE VOICES
    ========================================================= */
 
-
 function updateVoiceHarmonic(index, value) {
   for (const voice of activeVoices.values()) {
     const existing = voice.partials.find(partial => partial.index === index);
-
 
     if (existing && value <= 0) {
       for (const oscillator of existing.oscillators) {
@@ -802,7 +683,6 @@ function updateVoiceHarmonic(index, value) {
           oscillator.stop();
         } catch (error) {}
       }
-
 
       for (const node of existing.nodes) {
         if (node.source) { try { node.source.stop(); } catch (error) {} }
@@ -814,16 +694,13 @@ function updateVoiceHarmonic(index, value) {
       }
       try { existing.gain.disconnect(); } catch (error) {}
 
-
       voice.partials = voice.partials.filter(partial => partial !== existing);
-
 
       voice.oscillators = voice.oscillators.filter(
         oscillator => !existing.oscillators.includes(oscillator)
       );
     } else if (existing && value > 0) {
       existing.amp = value;
-
 
       existing.gain.gain.setTargetAtTime(
         value,
@@ -838,7 +715,6 @@ function updateVoiceHarmonic(index, value) {
         audioContext.currentTime
       );
 
-
       if (partial) {
         voice.partials.push(partial);
       }
@@ -846,11 +722,9 @@ function updateVoiceHarmonic(index, value) {
   }
 }
 
-
 /* =========================================================
    LIVE MODULATION UPDATES
    ========================================================= */
-
 
 function updateActiveModulatorFrequencies() {
   for (const voice of activeVoices.values()) {
@@ -862,7 +736,6 @@ function updateActiveModulatorFrequencies() {
     }
   }
 }
-
 
 function updateActiveModulation() {
   const amDepth = currentAMDepth();
@@ -886,19 +759,15 @@ function updateActiveModulation() {
   }
 }
 
-
 /* =========================================================
    COMPUTER KEYBOARD
    ========================================================= */
 
-
 window.addEventListener('keydown', event => {
   const key = event.key.toLowerCase();
 
-
   if (key === 'z' || key === 'x') {
     if (event.repeat) return;
-
 
     keyboardOctave = Math.max(
       0,
@@ -908,11 +777,9 @@ window.addEventListener('keydown', event => {
       )
     );
 
-
     setOctaveDisplay();
     return;
   }
-
 
   if (
     !KEYBOARD_NOTES[key] ||
@@ -924,15 +791,12 @@ window.addEventListener('keydown', event => {
     return;
   }
 
-
   event.preventDefault();
   noteOn(key, keyToMidi(key));
 });
 
-
 window.addEventListener('keyup', event => {
   const key = event.key.toLowerCase();
-
 
   if (KEYBOARD_NOTES[key]) {
     event.preventDefault();
@@ -940,36 +804,27 @@ window.addEventListener('keyup', event => {
   }
 });
 
-
 /* =========================================================
    POINTER / PIANO INPUT
    ========================================================= */
 
-
 const pointerKeys = new Map();
-
 
 piano.addEventListener('pointerdown', event => {
   const element = event.target.closest('.piano-key');
 
-
   if (!element) return;
 
-
   event.preventDefault();
-
 
   const id = 'mouse:' + event.pointerId;
   pointerKeys.set(event.pointerId, id);
 
-
   noteOn(id, keyToMidi(element.dataset.key));
 });
 
-
 function releasePointer(event) {
   const id = pointerKeys.get(event.pointerId);
-
 
   if (id) {
     noteOff(id);
@@ -977,24 +832,19 @@ function releasePointer(event) {
   }
 }
 
-
 window.addEventListener('pointerup', releasePointer);
 window.addEventListener('pointercancel', releasePointer);
-
 
 window.addEventListener('blur', () => {
   stopActiveVoices();
 });
 
-
 /* =========================================================
    MIDI INPUT
    ========================================================= */
 
-
 $('midi-connect').addEventListener('click', async () => {
   const status = $('midi-status');
-
 
   if (!navigator.requestMIDIAccess) {
     status.textContent =
@@ -1002,22 +852,18 @@ $('midi-connect').addEventListener('click', async () => {
     return;
   }
 
-
   try {
     midiAccess = await navigator.requestMIDIAccess();
-
 
     const attach = () => {
       for (const input of midiAccess.inputs.values()) {
         input.onmidimessage = onMidiMessage;
       }
 
-
       status.textContent = midiAccess.inputs.size
         ? 'MIDI ready: ' + midiAccess.inputs.size + ' input(s)'
         : 'MIDI enabled; no controller detected.';
     };
-
 
     midiAccess.onstatechange = attach;
     attach();
@@ -1027,13 +873,11 @@ $('midi-connect').addEventListener('click', async () => {
   }
 });
 
-
 function onMidiMessage(event) {
   const [statusByte, note, velocity] = event.data;
   const command = statusByte & 0xf0;
   const channel = statusByte & 0x0f;
   const id = 'midi:' + channel + ':' + note;
-
 
   if (command === 0x90 && velocity > 0) {
     noteOn(id, note, velocity / 127);
@@ -1042,30 +886,24 @@ function onMidiMessage(event) {
   }
 }
 
-
 /* =========================================================
    VISUALIZER SETUP
    ========================================================= */
-
 
 const oscCanvas = $('oscilloscope-canvas');
 const specCanvas = $('spectrogram-canvas');
 const spectrumCanvas = $('spectrum-canvas');
 
-
 const oscCtx = oscCanvas.getContext('2d');
 const specCtx = specCanvas.getContext('2d');
 const spectrumCtx = spectrumCanvas.getContext('2d');
 
-
 const timeData = new Uint8Array(analyser.fftSize);
 const freqData = new Uint8Array(analyser.frequencyBinCount);
-
 
 const responseFreqs = new Float32Array(512);
 const responseMag = new Float32Array(512);
 const responsePhase = new Float32Array(512);
-
 
 function anyVisualizerEnabled() {
   return (
@@ -1075,12 +913,10 @@ function anyVisualizerEnabled() {
   );
 }
 
-
 function refreshVisualizerLoop() {
   if (anyVisualizerEnabled() && animationFrameId === null) {
     animationFrameId = requestAnimationFrame(animate);
   }
-
 
   if (!anyVisualizerEnabled() && animationFrameId !== null) {
     cancelAnimationFrame(animationFrameId);
@@ -1088,68 +924,53 @@ function refreshVisualizerLoop() {
   }
 }
 
-
 $('oscilloscope-toggle').addEventListener('change', () => {
-  ('oscilloscope-toggle').checked;
+  $('oscilloscope-window').hidden = !$('oscilloscope-toggle').checked;
   refreshVisualizerLoop();
 });
 
-
 $('spectrogram-toggle').addEventListener('change', () => {
-  ('spectrogram-toggle').checked;
-
+  $('spectrogram-window').hidden = !$('spectrogram-toggle').checked;
 
   if ($('spectrogram-toggle').checked) {
     clearSpectrogram();
   }
 
-
   refreshVisualizerLoop();
 });
 
-
 $('spectrum-toggle').addEventListener('change', () => {
-  ('spectrum-toggle').checked;
-
+  $('spectrum-window').hidden = !$('spectrum-toggle').checked;
 
   if ($('spectrum-toggle').checked) {
     drawSpectrum();
   }
 
-
   refreshVisualizerLoop();
 });
 
-
 $('log-frequency-toggle').addEventListener('change', clearSpectrogram);
 $('log-amplitude-toggle').addEventListener('change', clearSpectrogram);
-
 
 $('spectrum-log-frequency-toggle').addEventListener('change', () => {
   responseDirty = true;
   drawSpectrum();
 });
 
-
 $('spectrum-log-amplitude-toggle').addEventListener('change', drawSpectrum);
-
 
 /* =========================================================
    OSCILLOSCOPE
    ========================================================= */
 
-
 function drawOscilloscope() {
   analyser.getByteTimeDomainData(timeData);
-
 
   const width = oscCanvas.width;
   const height = oscCanvas.height;
 
-
   oscCtx.fillStyle = '#05070a';
   oscCtx.fillRect(0, 0, width, height);
-
 
   oscCtx.strokeStyle = '#343943';
   oscCtx.beginPath();
@@ -1157,16 +978,13 @@ function drawOscilloscope() {
   oscCtx.lineTo(width, height / 2);
   oscCtx.stroke();
 
-
   oscCtx.strokeStyle = '#55ff99';
   oscCtx.lineWidth = 2;
   oscCtx.beginPath();
 
-
   for (let i = 0; i < timeData.length; i++) {
     const x = i / (timeData.length - 1) * width;
     const y = timeData[i] / 255 * height;
-
 
     if (i === 0) {
       oscCtx.moveTo(x, y);
@@ -1175,44 +993,35 @@ function drawOscilloscope() {
     }
   }
 
-
   oscCtx.stroke();
 }
-
 
 /* =========================================================
    SPECTROGRAM
    ========================================================= */
 
-
 function colorFor(value) {
   const v = Math.max(0, Math.min(255, value));
-
 
   const red = Math.max(0, Math.min(255, (v - 100) * 2.5));
   const green = Math.max(0, Math.min(255, (v - 35) * 1.5));
   const blue = Math.max(0, Math.min(255, 180 - v * 0.6));
 
-
-  return `rgb({Math.round(green)},${Math.round(blue)})`;
+  return `rgb(${Math.round(red)},${Math.round(green)},${Math.round(blue)})`;
 }
-
 
 function clearSpectrogram() {
   specCtx.fillStyle = '#05070a';
   specCtx.fillRect(0, 0, specCanvas.width, specCanvas.height);
 }
 
-
 function drawSpectrogram() {
   analyser.getByteFrequencyData(freqData);
-
 
   const width = specCanvas.width;
   const height = specCanvas.height;
   const nyquist = audioContext.sampleRate / 2;
   const minFrequency = 20;
-
 
   specCtx.drawImage(
     specCanvas,
@@ -1220,15 +1029,12 @@ function drawSpectrogram() {
     0, 0, width - 1, height
   );
 
-
   for (let y = 0; y < height; y++) {
     const position = 1 - y / (height - 1);
-
 
     const frequency = $('log-frequency-toggle').checked
       ? minFrequency * Math.pow(nyquist / minFrequency, position)
       : position * nyquist;
-
 
     const bin = Math.max(
       0,
@@ -1238,16 +1044,13 @@ function drawSpectrogram() {
       )
     );
 
-
     const magnitude = freqData[bin] / 255;
     let intensity = magnitude * 255;
-
 
     if ($('log-amplitude-toggle').checked) {
       const decibels = magnitude > 0
         ? 20 * Math.log10(magnitude)
         : -Infinity;
-
 
       intensity = Math.max(
         0,
@@ -1255,21 +1058,17 @@ function drawSpectrogram() {
       );
     }
 
-
     specCtx.fillStyle = colorFor(intensity);
     specCtx.fillRect(width - 1, y, 1, 1);
   }
 }
 
-
 /* =========================================================
    SPECTRUM AND FILTER RESPONSE
    ========================================================= */
 
-
 function frequencyToX(frequency, width, logarithmic) {
   const nyquist = audioContext.sampleRate / 2;
-
 
   return logarithmic
     ? Math.max(
@@ -1283,17 +1082,14 @@ function frequencyToX(frequency, width, logarithmic) {
     : Math.max(0, Math.min(width, frequency / nyquist * width));
 }
 
-
 function xToFrequency(x, width, logarithmic) {
   const nyquist = audioContext.sampleRate / 2;
   const position = Math.max(0, Math.min(1, x / width));
-
 
   return logarithmic
     ? 20 * Math.pow(nyquist / 20, position)
     : position * nyquist;
 }
-
 
 function amplitudeToY(decibels, height, logarithmic) {
   // Leave headroom above 0 dB so resonant Q peaks remain visible on the orange curve.
@@ -1302,27 +1098,22 @@ function amplitudeToY(decibels, height, logarithmic) {
   const clipped = Math.max(minDb, Math.min(maxDb, decibels));
   const normalizedDb = (clipped - minDb) / (maxDb - minDb);
 
-
   return logarithmic
     ? height - normalizedDb * (height - 22)
     : height - (Math.pow(10, clipped / 20) / Math.pow(10, maxDb / 20)) * (height - 22);
 }
 
-
 function calculateFilterResponse() {
   const nyquist = audioContext.sampleRate / 2;
   const logarithmic = $('spectrum-log-frequency-toggle').checked;
 
-
   for (let i = 0; i < responseFreqs.length; i++) {
     const position = i / (responseFreqs.length - 1);
-
 
     responseFreqs[i] = logarithmic
       ? 20 * Math.pow(nyquist / 20, position)
       : position * nyquist;
   }
-
 
   responseFilter.getFrequencyResponse(
     responseFreqs,
@@ -1330,76 +1121,60 @@ function calculateFilterResponse() {
     responsePhase
   );
 
-
   responseDirty = false;
 }
-
 
 function drawSpectrum() {
   if (!$('spectrum-toggle').checked) {
     return;
   }
 
-
   analyser.getByteFrequencyData(freqData);
-
 
   const width = spectrumCanvas.width;
   const height = spectrumCanvas.height;
   const ctx = spectrumCtx;
   const nyquist = audioContext.sampleRate / 2;
 
-
   const logFrequency = $('spectrum-log-frequency-toggle').checked;
   const logAmplitude = $('spectrum-log-amplitude-toggle').checked;
 
-
   ctx.fillStyle = '#05070a';
   ctx.fillRect(0, 0, width, height);
-
 
   ctx.font = '11px Arial';
   ctx.strokeStyle = '#252d3a';
   ctx.fillStyle = '#aab4c4';
 
-
   const marks = logFrequency
     ? [20,50,100,200,500,1000,2000,5000,10000,20000]
     : [0,2000,4000,6000,8000,10000,12000,16000,20000];
 
-
   for (const frequency of marks) {
     if (frequency > nyquist) continue;
 
-
     const x = frequencyToX(frequency, width, logFrequency);
-
 
     ctx.beginPath();
     ctx.moveTo(x, 0);
     ctx.lineTo(x, height);
     ctx.stroke();
 
-
     const label = frequency >= 1000
       ? (frequency / 1000) + 'k'
       : String(frequency);
 
-
     ctx.fillText(label, Math.min(x + 3, width - 30), height - 5);
   }
 
-
   for (const decibels of [-60, -45, -30, -15, 0, 15]) {
     const y = amplitudeToY(decibels, height, logAmplitude);
-
 
     ctx.strokeStyle = '#252d3a';
     ctx.beginPath();
     ctx.moveTo(0, y);
     ctx.lineTo(width, y);
     ctx.stroke();
-
 
     ctx.fillStyle = '#aab4c4';
     ctx.fillText(
@@ -1409,24 +1184,19 @@ function drawSpectrum() {
     );
   }
 
-
   /* Actual post-filter output spectrum. */
   ctx.strokeStyle = '#55e6ff';
   ctx.lineWidth = 2;
   ctx.beginPath();
 
-
   let started = false;
-
 
   for (let i = 0; i < freqData.length; i++) {
     const frequency = i / (freqData.length - 1) * nyquist;
 
-
     if (logFrequency && frequency < 20) {
       continue;
     }
-
 
     const x = frequencyToX(frequency, width, logFrequency);
     const magnitude = freqData[i] / 255;
@@ -1434,9 +1204,7 @@ function drawSpectrum() {
       ? 20 * Math.log10(magnitude)
       : -60;
 
-
     const y = amplitudeToY(decibels, height, logAmplitude);
-
 
     if (!started) {
       ctx.moveTo(x, y);
@@ -1446,40 +1214,31 @@ function drawSpectrum() {
     }
   }
 
-
   ctx.stroke();
-
 
   /* Calculated filter response and draggable cutoff line. */
   if ($('filter-type').value !== 'off') {
     // Recalculate on every frame so the orange line cannot lag the controls.
     calculateFilterResponse();
 
-
     ctx.strokeStyle = '#ffb454';
     ctx.lineWidth = 2;
     ctx.beginPath();
 
-
     for (let i = 0; i < responseFreqs.length; i++) {
       const frequency = responseFreqs[i];
-
 
       if (logFrequency && frequency < 20) {
         continue;
       }
 
-
       const x = frequencyToX(frequency, width, logFrequency);
-
 
       const decibels = 20 * Math.log10(
         Math.max(1e-6, responseMag[i])
       );
 
-
       const y = amplitudeToY(decibels, height, logAmplitude);
-
 
       if (i === 0) {
         ctx.moveTo(x, y);
@@ -1488,13 +1247,10 @@ function drawSpectrum() {
       }
     }
 
-
     ctx.stroke();
-
 
     const cutoff = Number($('filter-cutoff').value);
     const cutoffX = frequencyToX(cutoff, width, logFrequency);
-
 
     ctx.strokeStyle = '#f7f7f7';
     ctx.setLineDash([5, 4]);
@@ -1504,7 +1260,6 @@ function drawSpectrum() {
     ctx.stroke();
     ctx.setLineDash([]);
 
-
     ctx.fillStyle = '#f7f7f7';
     ctx.fillText(
       'cutoff ' + Math.round(cutoff) + ' Hz',
@@ -1513,7 +1268,6 @@ function drawSpectrum() {
     );
   }
 }
-
 
 /* Drag horizontally for cutoff and vertically for Q in the spectrum. */
 let draggingFilter = false;
@@ -1529,7 +1283,6 @@ spectrumCanvas.addEventListener('pointermove', event => {
 spectrumCanvas.addEventListener('pointerup', () => { draggingFilter = false; });
 spectrumCanvas.addEventListener('pointercancel', () => { draggingFilter = false; });
 
-
 function setFilterFromPointer(event) {
   const rect = spectrumCanvas.getBoundingClientRect();
   const x = (event.clientX - rect.left) / rect.width * spectrumCanvas.width;
@@ -1544,41 +1297,33 @@ function setFilterFromPointer(event) {
   updateFilter();
 }
 
-
 /* =========================================================
    VISUALIZER ANIMATION LOOP
    ========================================================= */
 
-
 function animate() {
   animationFrameId = null;
-
 
   if (!anyVisualizerEnabled()) {
     return;
   }
 
-
   if ($('oscilloscope-toggle').checked) {
     drawOscilloscope();
   }
-
 
   if ($('spectrogram-toggle').checked) {
     drawSpectrogram();
   }
 
-
   if ($('spectrum-toggle').checked) {
     drawSpectrum();
   }
-
 
   if (anyVisualizerEnabled()) {
     animationFrameId = requestAnimationFrame(animate);
   }
 }
-
 
 /* Global standard reset: a plain sine, neutral ADSR, no effects or displays. */
 function resetAllSettings() {
@@ -1632,9 +1377,7 @@ function resetAllSettings() {
 }
 $('global-reset').addEventListener('click', resetAllSettings);
 
-
 /* Initialize in the same clean standard state used by the global reset. */
 resetAllSettings();
-
 
 })();
